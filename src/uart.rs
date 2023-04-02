@@ -63,6 +63,12 @@ pub mod internal {
         pub fn set_thr(&self, c: u8) {
             unsafe { self.uart_registers.rthr_dll.write(c) };
         }
+        pub fn get_dr(&self) -> u8 {
+            unsafe { 0b00000001 & self.uart_registers.lsr.read() }
+        } 
+        pub fn get_rhr(&self) -> u8 {
+            unsafe { self.uart_registers.rthr_dll.read() }
+        }
     }
 }
 
@@ -94,6 +100,13 @@ impl UARTDriver {
     fn put(&self, c: u8) {
         self.uart.set_thr(c);
     }
+    pub fn get(&self) -> Option<u8> {
+        if self.uart.get_dr() == 0b00000001 {
+            Some(self.uart.get_rhr())
+        } else {
+            None
+        }
+    }
 }
 
 impl Write for UARTDriver {
@@ -110,9 +123,7 @@ mod tests {
     use super::*;
     use mockall::predicate::*;
 
-    #[test]
-    fn it_should_init_uart() {
-        let mut uart = UART::default();
+    fn setup_uart_expectations(uart: &mut UART) {
         uart.expect_set_word_length().with(eq(0b11)).times(1).return_const(());
         uart.expect_enable_fifo().times(1).return_const(());
         uart.expect_enable_receiver_buffer_interrupts().times(1).return_const(());
@@ -120,6 +131,52 @@ mod tests {
         uart.expect_set_divisor_least().with(eq::<u8>((592 & 0xff).try_into().unwrap())).times(1).return_const(());
         uart.expect_set_divisor_most().with(eq::<u8>((592 >> 8).try_into().unwrap())).times(1).return_const(());
         uart.expect_disable_divisor_latch_access_bit().times(1).return_const(());
+    }
+
+    #[test]
+    fn it_should_put_on_thr_on_write() {
+        let mut uart = UART::default();
+        setup_uart_expectations(&mut uart);
+        uart.expect_set_thr().with(eq('c' as u8)).times(1).return_const(());
+        let mut uart_writer = UARTDriver::new(uart);
+        uart_writer.write_str("c");
+    }
+
+    #[test]
+    fn it_should_put_thr_on_put() {
+        let mut uart = UART::default();
+        setup_uart_expectations(&mut uart);
+        uart.expect_set_thr().with(eq('c' as u8)).times(1).return_const(());
+        let mut uart_driver = UARTDriver::new(uart);
+        uart_driver.put(b'c');
+    }
+
+    #[test]
+    fn it_should_get_none_if_dr_is_0() {
+        let mut uart = UART::default();
+        setup_uart_expectations(&mut uart);
+        uart.expect_get_dr().times(1).return_const(0);
+        uart.expect_get_rhr().times(0);
+        let mut uart_driver = UARTDriver::new(uart);
+        assert!(uart_driver.get().is_none());
+    }
+
+    #[test]
+    fn it_should_get_rhr_if_dr_is_1() {
+        let mut uart = UART::default();
+        setup_uart_expectations(&mut uart);
+        uart.expect_get_dr().times(1).return_const(1);
+        uart.expect_get_rhr().times(1).return_const(b'a');
+        let mut uart_driver = UARTDriver::new(uart);
+        assert!(uart_driver.get() == Some(b'a'));
+    }
+
+    #[test]
+    fn it_should_init_uart() {
+        let mut uart = UART::default();
+        setup_uart_expectations(&mut uart);
         UARTDriver::new(uart);
     }
+
+
 }

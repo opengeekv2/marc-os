@@ -36,10 +36,29 @@ fn panic(_panic: &PanicInfo<'_>) -> ! {
 #[no_mangle]
 extern "C" fn kmain() {
 
-	let mut my_uart = uart::UARTDriver::new(uart::internal::UART::new(0x1000_0000));
+	let my_uart = uart::UARTDriver::new(uart::internal::UART::new(0x1000_0000));
 
 	println!("This is my operating system!");
-	println!("I'm so awesome. If you start typing something, I'll show you what you typed!");	
+	println!("I'm so awesome. If you start typing something, I'll show you what you typed!");
+	
+	loop {
+		if let Some(c) = my_uart.get() {
+			match c {
+				8 => {
+					// This is a backspace, so we essentially have
+					// to write a space and backup again:
+					print!("{}{}{}", 8 as char, ' ', 8 as char);
+				},
+				10 | 13 => {
+					// Newline or carriage-return
+					println!();
+				},
+				_ => {
+					print!("{}", c as char);
+				}
+			}
+		}
+	}	
 }
 #[cfg(not(test))]
 pub mod assembly;
